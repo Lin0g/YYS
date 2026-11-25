@@ -219,7 +219,7 @@ def startup(window):
     #检测ADB
     if sys.platform=='win32':
         textBrowser.append('检测模拟器')
-        path_list = ["C:\\Program Files\\Netease\\MuMuPlayer-12.0\\shell\\adb.exe", "C:\\Program Files\\Netease\\MuMu\\nx_main\\adb.exe", "C:\\leidian\\LDPlayer9\\adb.exe"]
+        path_list = ["C:\\Program Files\\Netease\\MuMuPlayer-12.0\\shell\\adb.exe", "C:\\Program Files\\Netease\\MuMu\\nx_main\\adb.exe", "C:\\leidian\\LDPlayer9\\adb.exe", "D:\\app\\MuMuPlayer\\nx_main\\adb.exe"]
         for id_path in path_list:
             #textBrowser.append('搜索'+id_path)
             if os.path.isfile(id_path):

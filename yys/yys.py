@@ -613,10 +613,14 @@ class Worker(QObject):
         last_click=''
         cishu=0
         refresh=0
-        right = (654, 520)
+        right = (664, 520)
         left = (454, 420)
         
         boss_done=False
+        boss_done_time=None
+        baoxiang_seen=False
+        baoxiang_wait=None
+        baoxiang_first=None
         while self.isRunning:   #直到取消，或者出错
             #截屏
             screen=action.screenshot(self.thread_id)
@@ -666,6 +670,7 @@ class Worker(QObject):
                     if not len(pts) == 0:
                         if 'boss' in i:
                             boss_done=True
+                            boss_done_time=time.time()
                         if last_click==i:
                             refresh=refresh+1
                         else:
@@ -686,28 +691,96 @@ class Worker(QObject):
                     refresh=0
                     if not boss_done:
                         self.message_output('向右走')
-                        xy = action.cheat(right, 10, 10)
+                        xy = action.cheat(right, 20, 10)
                         action.touch(xy,self.thread_id)
                         t = random.randint(100,300) / 100
                         if self.sleep_fast(t): return
                         continue
                     else:
-                        self.message_output('准备退出')
-                        for i in ['tuichu','tuichu2']:
-                            want = self.imgs[i]
-                            size = want[0].shape
-                            h, w , ___ = size
-                            pts = action.locate(screen,want,0)
-                            if not len(pts) == 0:
-                                self.message_output('退出中'+i)
-                                try:
-                                    queding = pts[1]
-                                except:
-                                    queding = pts[0]
-                                xy = action.cheat(queding, w, h)
+                        #打完boss后拾取全部宝箱(0-n个)，最后一箱消失后连续5秒无宝箱才退出
+                        want = self.imgs['baoxiang']
+                        size = want[0].shape
+                        h, w , ___ = size
+                        pts = action.locate(screen,want,0)
+                        now = time.time()
+                        exit_now = False
+                        if not len(pts) == 0:
+                            #有宝箱：标记已见过，持续拾取
+                            baoxiang_seen = True
+                            baoxiang_wait = None
+                            if baoxiang_first is None:
+                                baoxiang_first = now
+                            if now - baoxiang_first > 60:
+                                #长时间点不掉，防死循环
+                                self.message_output('宝箱拾取超时(60s)，准备退出')
+                                exit_now = True
+                            else:
+                                self.message_output('发现宝箱，点击拾取')
+                                xy = action.cheat(pts[0], w, h)
                                 action.touch(xy,self.thread_id)
-                                t = random.randint(50,80) / 100
+                                t = random.randint(30,60) / 100
                                 if self.sleep_fast(t): return
+                                # 主动关闭"获得奖励"弹层（多宝箱场景不会自动关）
+                                self.message_output('尝试关闭奖励弹层')
+                                close_deadline = time.time() + 10
+                                while time.time() < close_deadline:
+                                    closed = False
+                                    for i in ['jiangli','jiangli2','jixu','jixushengxing',\
+                                              'jixuyucheng','huodongjiangli','hdjiangli','querenyuhun']:
+                                        want = self.imgs.get(i)
+                                        if want is None: continue
+                                        size = want[0].shape
+                                        h2, w2, ___ = size
+                                        sc2 = action.screenshot(self.thread_id)
+                                        cpts = action.locate(sc2, want, 0)
+                                        if not len(cpts) == 0:
+                                            self.message_output('关闭弹层:'+i)
+                                            cxy = action.cheat(cpts[0], w2, h2)
+                                            action.touch(cxy, self.thread_id)
+                                            time.sleep(0.5)
+                                            closed = True
+                                            break
+                                    if not closed:
+                                        # 所有关闭按钮都找不到 → 弹层消失了
+                                        break
+                        else:
+                            #无宝箱
+                            if not baoxiang_seen:
+                                #还没见过任何宝箱 → boss刚死，宝箱可能还没刷
+                                if boss_done_time is not None and now - boss_done_time > 30:
+                                    self.message_output('boss死后30秒未发现宝箱，准备退出')
+                                    exit_now = True
+                                else:
+                                    #继续等，不启动5秒倒计时
+                                    time.sleep(0.3)
+                                    continue
+                            else:
+                                #至少见过一次宝箱，现在找不到 → 最后一个可能已消失
+                                baoxiang_first = None
+                                if baoxiang_wait is None:
+                                    baoxiang_wait = now
+                                if now - baoxiang_wait >= 5:
+                                    self.message_output('最后一箱消失5秒，准备退出')
+                                    exit_now = True
+                        if exit_now:
+                            self.message_output('准备退出')
+                            for i in ['tuichu','tuichu2']:
+                                want = self.imgs[i]
+                                size = want[0].shape
+                                h, w , ___ = size
+                                pts = action.locate(screen,want,0)
+                                if not len(pts) == 0:
+                                    self.message_output('退出中'+i)
+                                    try:
+                                        queding = pts[1]
+                                    except:
+                                        queding = pts[0]
+                                    xy = action.cheat(queding, w, h)
+                                    action.touch(xy,self.thread_id)
+                                    t = random.randint(50,80) / 100
+                                    if self.sleep_fast(t): return
+                        elif len(pts) == 0:
+                            time.sleep(0.3)
                     continue
 
             for i in ['jujue','querenyuhun',\
@@ -728,6 +801,10 @@ class Worker(QObject):
                         cishu=cishu+1
                         self.message_output('探索次数：'+str(cishu)+'/'+str(self.cishu_max))
                         boss_done=False
+                        boss_done_time=None
+                        baoxiang_seen=False
+                        baoxiang_wait=None
+                        baoxiang_first=None
                     if refresh>6 or cishu>self.cishu_max:
                         self.message_output('进攻次数上限')
                         return
