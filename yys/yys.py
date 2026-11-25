@@ -1,4 +1,5 @@
 import sys,random,time
+import numpy as np
 from PyQt6.QtCore import QObject,pyqtSignal
 import action
 
@@ -720,29 +721,24 @@ class Worker(QObject):
                                 action.touch(xy,self.thread_id)
                                 t = random.randint(30,60) / 100
                                 if self.sleep_fast(t): return
-                                # 主动关闭"获得奖励"弹层（多宝箱场景不会自动关）
+                                # 主动关闭"获得奖励"弹层（多宝箱时不会自动关闭）
+                                # 实测：必须点击"获得奖励"标题右缘+20px(695,209)才能关闭，
+                                # 点标题本身或弹层内部都无效
                                 self.message_output('尝试关闭奖励弹层')
                                 close_deadline = time.time() + 10
                                 while time.time() < close_deadline:
-                                    closed = False
-                                    for i in ['jiangli','jiangli2','jixu','jixushengxing',\
-                                              'jixuyucheng','huodongjiangli','hdjiangli','querenyuhun']:
-                                        want = self.imgs.get(i)
-                                        if want is None: continue
-                                        size = want[0].shape
-                                        h2, w2, ___ = size
-                                        sc2 = action.screenshot(self.thread_id)
-                                        cpts = action.locate(sc2, want, 0)
-                                        if not len(cpts) == 0:
-                                            self.message_output('关闭弹层:'+i)
-                                            cxy = action.cheat(cpts[0], w2, h2)
-                                            action.touch(cxy, self.thread_id)
-                                            time.sleep(0.5)
-                                            closed = True
-                                            break
-                                    if not closed:
-                                        # 所有关闭按钮都找不到 → 弹层消失了
+                                    sc2 = action.screenshot(self.thread_id)
+                                    if not isinstance(sc2, np.ndarray):
                                         break
+                                    # 用弹层面板的米黄底色判断弹层是否还在
+                                    roi2 = sc2[245:400, 330:800].astype(np.int16)
+                                    mx2 = roi2.max(axis=2)
+                                    mn2 = roi2.min(axis=2)
+                                    if ((mx2 > 165) & ((mx2 - mn2) < 60)).mean() < 0.5:
+                                        break   # 弹层已消失
+                                    self.message_output('点击标题右侧关闭弹层')
+                                    action.touch((695, 209), self.thread_id)
+                                    if self.sleep_fast(0.8): return
                         else:
                             #无宝箱
                             if not baoxiang_seen:
